@@ -1,0 +1,200 @@
+function countData(){
+  var day = ScriptProperties.getProperty('day').split('|');
+  var numQ = ScriptProperties.getProperty('numQuestion');
+  var genTitle = ScriptProperties.getProperty('genTitle');
+  var stHour = ScriptProperties.getProperty('stHour').split('|');
+  var endHour = ScriptProperties.getProperty('endHour').split('|');
+  var title = ScriptProperties.getProperty('title').split('|');
+  var descr = ScriptProperties.getProperty('descr').split('|');
+  var resNum = ScriptProperties.getProperty('resNum').split('|');
+  var resMax = ScriptProperties.getProperty('resMax').split('|');
+  var data = logSheet.getDataRange().getValues();//data come from the logSheet
+  var resVal = [];
+  for(var d=0;d<day.length;++d){
+    var resCount = 0;
+    for(var n=1;n<data.length;++n){resCount+=Number(data[n][(d+5)])};
+    resVal.push(resCount);
+  }
+  ScriptProperties.setProperty('resVal',resVal.join('|'));
+  var uniqueDay = [];
+  var ud = 0;
+  uniqueDay.push(day[0]);
+  for(var d=1;d<day.length;++d){
+    if(day[d]!=uniqueDay[ud]){uniqueDay.push(day[d]);ud++}
+  }Logger.log(uniqueDay+' length='+uniqueDay.length);
+  var frameWidth = 300*uniqueDay.length.toString();
+  if(frameWidth>900){frameWidth=900};
+  var app = UiApp.createApplication().setTitle('Count overview').setHeight(480).setWidth(frameWidth+50).setStyleAttribute('background','#ffffaa');
+  var panel = app.createVerticalPanel().setStyleAttributes(styleCalc);
+  var panelV = app.createVerticalPanel().setStyleAttributes(styleCalc);
+  var panelH = app.createHorizontalPanel().setStyleAttributes(styleCalc).setStyleAttribute('margin-left','7px');
+  var scroll = app.createScrollPanel().setWidth(frameWidth+25).setHeight('400');
+  panel.add(panelV).add(panelH);
+  scroll.add(panel);
+  var colIdx = [];
+  var colPanel = [];
+  var alertCount = 0;
+  var titleRow = app.createHorizontalPanel();
+  app.add(app.createHTML(genTitle).setStyleAttributes({'padding':'8px','margin-left':'10px'}));
+  panelV.add(titleRow.setStyleAttribute('padding-left','6px'));
+  for(var c=0;c<uniqueDay.length;c++){titleRow.add(app.createTextBox().setText(uniqueDay[c])
+	.setStyleAttributes(styleRow).setReadOnly(true).setWidth('140'))
+	.add(app.createTextBox().setText('hour')
+	.setStyleAttributes(styleRow)
+	.setReadOnly(true).setWidth('55'))
+ .add(app.createTextBox().setText('places')
+	.setStyleAttributes(styleRow).setReadOnly(true)
+	.setWidth('55')).add(app.createTextBox().setText('max')
+	.setStyleAttributes(styleRow).setReadOnly(true).setWidth('40')) ;
+   }
+  for(var u=0;u<uniqueDay.length;u++){colIdx.push(0) ; colPanel.push(app.createVerticalPanel()) ; panelH.add(colPanel[u])};  
+  for(var u=0;u<uniqueDay.length;u++){
+    for(var d=0;d<day.length;++d){if(day[d]==uniqueDay[u]){colIdx[d]=u}}
+  }
+  for(var d=0;d<day.length;++d){
+    Logger.log(' d='+d+'  title[d]:'+title[d]+' in column '+colIdx[d])
+  }
+  for(var d=0;d<day.length;++d){
+    var alert = '#ffffde';
+    if(resVal[d]>=resMax[d]){alert='orange' ; alertCount++}
+    var row = app.createHorizontalPanel().add(app.createTextArea()
+	.setText(title[d]).setStyleAttributes(styleRow)
+	.setReadOnly(true).setWidth('140')).add(app.createTextBox()
+	.setText(stHour[d]+'-'+endHour[d])
+	.setStyleAttributes(styleRow).setReadOnly(true).setWidth('55'))   .add(app.createTextBox().setText(resVal[d])
+	.setStyleAttributes(styleRow)
+	.setStyleAttribute('background',alert)
+	.setReadOnly(true).setWidth('55').setId('resVal'+d))
+	.add(app.createTextBox().setText(resMax[d])
+	.setStyleAttributes(styleRow).setReadOnly(true).setWidth('40')) ;
+    colPanel[colIdx[d]].add(row);
+//  Logger.log('colPanel['+colIdx[d]+'].add(row)')
+  }
+  var commentMsg = "no overflow alert";
+  if(alertCount>0){commentMsg = alertCount+" overflow alert(s)  ! (orange cell(s)"};
+  var comment = app.createHTML(commentMsg).setId('comment');
+  if(alertCount>0){comment.setStyleAttributes(stylHeader)}else{comment.setStyleAttributes(styleDate)};
+  var rHandler = app.createServerHandler('refresh').addCallbackElement(panel);
+  var refresh = app.createButton('recalculate results', rHandler).setStyleAttributes({'padding':'2px','border-radius':'4px'}).setWidth('160');
+  var rcHandler = app.createServerHandler('closeApp');
+  var closAp = app.createButton('close this window', rcHandler)
+	.setStyleAttributes({'padding':'2px','border-radius':'4px'}).setWidth('160');
+  app.add(scroll).add(app.createHorizontalPanel()
+	.add(comment).add(refresh).add(closAp)
+	.setStyleAttributes({'margin-left':'14px'}));
+  SpreadsheetApp.getActiveSpreadsheet().show(app);// show app
+  var bgUser = logSheet.getRange(1,1,logSheet.getLastRow(),logSheet.getLastColumn()).getBackgrounds();
+  var colorUser = logSheet.getRange(1,1,logSheet.getLastRow(),logSheet.getLastColumn()).getFontColors();
+  for(var n=1 ; n<bgUser.length;++n){
+    for(var c in bgUser[n]){
+      if(c!=2){
+        bgUser[n][c]='#eeffee'
+        colorUser[n][c]='#000000'
+      }
+    }
+  }
+  logSheet.getRange(1,1,logSheet.getLastRow(),logSheet.getLastColumn()).setBackgrounds(bgUser);
+  logSheet.getRange(1,1,logSheet.getLastRow(),logSheet.getLastColumn()).setFontColors(colorUser);
+}
+
+
+function closeApp(){
+  var app = UIApp.getActiveApplication();
+  return(app.close())
+}
+
+
+function onOpen() {
+  DocumentApp.getUI().createMenu('Chat Utilities')
+  .addItem('Open Chat', 'createChatBox')
+  .addItem('Show your current ID','showUser')
+  .addItem('Change your user name', 'setUserName')
+  .addToUI();
+}
+
+
+function createChatBox(){
+  ScriptProperties.setProperty('chatContent','');
+  var app = UIApp.createApplication().setWidth(252);
+  app.setTitle("Chat Bar");
+  var vPanel = app.createVerticalPanel().setId('chatPanel').setWidth('100%');
+  var chatHandler = app.createServerHandler("sayChat").addCallbackElement(vPanel);
+  var textArea = app.createTextArea().setId('chatBox').setName('chatBox').setReadOnly(true).setText('').setSize('250px', '450px');
+  var textBox = app.createTextArea().setId('messageBox').setName('messageBox').setText('Start chat...').setPixelSize(250,100).setStyleAttributes({'padding':'5px','background':'#ffffcc'}).addKeyPressHandler(chatHandler);  
+  var clearTextBoxClientHandler = app.createClientHandler().forTargets(textBox).setText('');
+  textBox.addClickHandler(clearTextBoxClientHandler);// a clientHandler to delete old text when we click the textArea
+  var chatButton = app.createButton().setId("sayButton").setText("Say!").addMouseUpHandler(chatHandler);
+  var chkHandler = app.createServerHandler('autoUpdate').addCallbackElement(vPanel);
+  var chk = app.createCheckBox().setId('chk').addValueChangeHandler(chkHandler);
+  vPanel.add(textArea);
+  vPanel.add(textBox);
+  vPanel.add(chatButton);
+  vPanel.add(chk);
+  app.add(vPanel);
+  DocumentApp.getUI().showSidebar(app);
+  return app;
+}
+
+
+function sayChat(e){
+  var app = UiApp.getActiveApplication();  
+  var user = '['+getCurrentUser()+'] : ';
+  if(e.parameter.messageBox=="You have been put offline because you didn't type anything for more than 5 minutes..., please click here to refresh the conversation"){
+    app.getElementById("chatBox").setText(content);// refresh chatBox
+    app.getElementById('messageBox').setText('');// clear messageBox
+    ScriptProperties.setProperty('chatTimer',0);// reset counter
+    return app;
+  }
+  if(e.parameter.source=='messageBox'&&e.parameter.keyCode!=13){return app};// if we are simply typing a message then return immediately
+  var content = ScriptProperties.getProperty('chatContent');
+  ScriptProperties.setProperty('chatContent',content+"\n"+user+e.parameter.messageBox);// store the conversation with user names
+  app.getElementById("chatBox").setText(content+"\n"+user+e.parameter.messageBox+'\n');// update the conversation area
+  app.getElementById('messageBox').setText('');// and clear the message area
+  app.getElementById('chk').setValue(true,true);// start the timer
+  ScriptProperties.setProperty('chatTimer',0);// initialize the counter
+  return app;
+}
+
+
+function autoUpdate(){ // this function called on checkBox event
+  var app = UiApp.getActiveApplication();
+  var content = ScriptProperties.getProperty('chatContent');
+  var counter = Number(ScriptProperties.getProperty('chatTimer'));
+  ++counter;// increment counter
+  if(counter>30){ // if > limit then stop the timer, change this value to get a longer delay
+    app.getElementById('chk').setValue(false);
+    app.getElementById('messageBox').setText("You have been put offline because you didn't type anything for more than 5 minutes..., please click here to refresh the conversation");
+    return app;
+  } ; // else update the chat Area
+  ScriptProperties.setProperty('chatTimer',counter);// store the counter value
+  var content = ScriptProperties.getProperty('chatContent');
+  app.getElementById("chatBox").setText(content+'*'); // the * is there only for test purpose
+  app.getElementById('chk').setValue(false);
+  Utilities.sleep(950);// wait 950 millisec to get approximately a one second total delay
+  app.getElementById('chk').setValue(true,true).setText('timer = '+counter);// create a new event (= activate the positive feedBack loop)
+  return app;// update the UI
+}
+
+
+function showUser(){
+  DocumentApp.getUi().alert("Your userId is: "+getCurrentUser());
+}
+
+
+function getCurrentUser(){
+  var email = Session.getEffectiveUser().getEmail();
+  var user = UserProperties.getProperty('user')==null || UserProperties.getProperty('user')=='' ? email.substring(0,email.indexOf("@")) : UserProperties.getProperty('user');
+  return user;
+}
+
+
+function setUserName(){
+  var oldName = getCurrentUser();
+  var user = DocumentApp.getUi().prompt('Please enter your desired user name as it will be shown\n(old name was '+oldName+', default is your mail ID)', DocumentApp.getUi().ButtonSet.OK_CANCEL);
+  if(user.getSelectedButton() == DocumentApp.getUi().Button.CANCEL) return;
+  ScriptProperties.setProperty('chatContent','\n['+oldName+'] is changing his user name to ['+user.getResponseText()+']\n');// show the new name along with a warning in the chat history
+  UserProperties.setProperty('user',user.getResponseText());// store the new user name
+}
+
+
+

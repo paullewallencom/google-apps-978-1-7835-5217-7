@@ -1,0 +1,303 @@
+function getAttachAndBody(){
+  var firstThread = GmailApp.getInboxThreads(0,1)[0];
+  // get only the most recent thread
+  var message = firstThread.getMessages()[0];
+  // get the first message in that thread,getMessages() returns an array of message objects
+  var sender = message.getFrom();
+  // get the sender email
+  var attach = message.getAttachments();
+  // get the attachment
+  var body = message.getBody();
+  //body as a string
+  var bodyDocHtml = DocsList.createFile('body.html', body, "text/html");
+  // create a html file with the body content
+  var bodyId=bodyDocHtml.getId();// get its id
+  var bodyDocPdf = bodyDocHtml.getAs('application/pdf').getBytes();
+  // convert this html in pdf
+  var bodyToSend = {fileName: 'body.pdf',content:bodyDocPdf, mimeType:'application/pdf'};
+  // bodyToSend is the object containing the pdf
+  if(attach.length>0){ 
+    // if attachment in original message send it along with the msg body to the current user.
+    MailApp.sendEmail(Session.getEffectiveUser().getEmail(), 'transfer email text received from '+sender+' as pdf + body & attachment in attachment', 'see attachments',
+                      {attachments:[attach[0],bodyToSend]});
+    }
+  MailApp.sendEmail(Session.getEffectiveUser().getEmail(), 'transfer email text received from '+sender+' as pdf in attachment', 'see attachments', {attachments:[bodyToSend]});
+  // if no attachment just send the pdf version of message text
+  DocsList.getFileById(bodyId).setTrashed(true);
+  // delete the html message from your drive as it was a temporary item we don't need anymore.
+}
+
+function createLabel(labelName){
+  if( ! GmailApp.getUserLabelByName(labelName)){
+    GmailApp.createLabel(labelName);
+  }
+  var info = 'Label "'+labelName+'" now exists and has '+GmailApp.getUserLabelByName(labelName).getThreads().length
+  +' threads, '+GmailApp.getUserLabelByName(labelName).getUnreadCount()+' unread threads' ;// prepare a readable message
+  return info
+}
+
+function testLabelNameCreation(){
+ Logger.log(createLabel('testLabelTodelete'));// open the logger to read the message
+}
+
+function createManyLabels(){
+  var labels = ['test1','test2','test3','test4'];
+  for(var n in labels){
+    Logger.log(createLabel(labels[n]));
+  }
+}
+
+function inboxLabeller() {
+  // check if the script runs for the first time or not,
+  // if so, create the trigger and ScriptProperties the script will use
+  // a start index and a total counter for processed items
+  // else continue the task
+  if(ScriptProperties.getKeys().length==0){ 
+    ScriptProperties.setProperties({'threadStart':0, 'itemsprocessed':0, 'notFinished':true});
+    ScriptApp.newTrigger('inboxLabeller').timeBased().everyMinutes(10).create();
+  }
+  // initialize all variables when we start a new task, "notFinished" is the main loop condition
+  var items = Number(ScriptProperties.getProperty('itemsprocessed'));
+  var tStart = Number(ScriptProperties.getProperty('threadStart'));
+  var notFinishedinished = ScriptProperties.getProperty('notFinished')=='true';
+  Logger.clear();// be sure the Logger is empty
+  
+  while (notFinishedinished){ // the main loop
+    var threads = GmailApp.getInboxThreads(tStart,100);
+    getAds(tStart);// check if it's an ad and move it to "Ads" folder if necessary
+    Logger.log('Number of threads='+Number(tStart+threads.length));
+    if(threads.length==0){ // if no threads anymore the we're done
+      notFinishedinished=false; // reset the flag
+      break;//and exit the loop
+    }
+    for(t=0;t<threads.length;++t){
+      var mCount = threads[t].getMessageCount();// how many messages ?
+      var mSubject = threads[t].getFirstMessageSubject();
+      var labels = threads[t].getLabels();
+      var labelsNames = '';
+      for(var l in labels){labelsNames+=labels[l].getName()};
+      // get all the labels even if more than one for each message and write this in the logger
+      Logger.log('subject '+mSubject+' has '+mCount+' msgs with labels '+labelsNames);
+      for(var l in labels){
+        // assign the label to every message in the thread
+        labels[l].addToThread(threads[t]);
+      }
+    }
+    tStart = tStart+100;// prepare for next execution
+    items = items+100;// to start from the next bunch
+    ScriptProperties.setProperties({'threadStart':tStart, 'itemsprocessed':items});// store this value
+    break;
+  }
+  if(notFinishedinished){ ;// send an intermediate activity report along with the Logger's content
+    GmailApp.sendEmail(Session.getEffectiveUser().getEmail(), 'inboxLabeller progress report', 'Still working, '+items+' processed \n - see logger below \n \n'+Logger.getLog());
+  }else{
+    // if the task has completed, send a final report mail and delete ScriptProperties and trigger
+    GmailApp.sendEmail(Session.getEffectiveUser().getEmail(), 'inboxLabeller End report', 'Job completed : '+items+' processed');
+    ScriptProperties.deleteAllProperties();
+    var trigger = ScriptApp.getProjectTriggers()[0];
+    ScriptApp.deleteTrigger(trigger);
+  }
+}
+
+function getAds(tStart){
+  var pub = GmailApp.getUserLabelByName('Ads');
+  if(pub==null){
+    pub = GmailApp.createLabel('Ads');// if you don't have an "Ads" label then create it
+  }
+  var threads = GmailApp.search('category:promotions', tStart, 100);// check the category Gmail added to the thread
+  for(var n in threads){
+    var tnr = Number(tStart)+Number(n);
+    threads[n].addLabel(Ads);// move every message in the Ads folder/label
+    Logger.log('threads n° '+tnr+' = '+threads[n].getFirstMessageSubject()+' has '+threads[n].getMessageCount()+' messages ending on '+threads[n].getLastMessageDate());
+    // show what we have done explicitely
+  }
+}
+
+function testSendEmail(){
+  // Send an email with a file from Google Drive attached as a PDF.
+  var file = DriveApp.getFileById('1234567890abcdefghijklmnopqrstuvwxyz');
+  GmailApp.sendEmail('mike@example.com', 'Attachment example', 'Please see the attached file.', {
+    attachments: [file.getAs(MimeType.PDF)],
+    name: 'Automatic Emailer Script'
+  });
+}
+
+function sendReport() {
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  var formResp = ss.getSheetByName('Form Responses');// get the sheet that contains data
+  var data = formResp.getDataRange().getValues();// get all data in an array of arrays aka 2D array)
+  var htmlContent = createMsg(data)[0];// the function returns 2 results in an array, get the first one
+  var textBody = createMsg(data)[1];// get the second one (text only, tab separated items
+  var htmlMsgObject = {'htmlBody' : htmlContent};// create an object to use as optional parameter below
+  GmailApp.sendEmail(Session.getActiveUser().getEmail(),'Dayly report of form responses',textBody,htmlMsgObject);// send to the active user
+}
+
+function createMsg(dataArray){
+  var color='#CCF';// a blueish color for headers
+  var textMsg = 'Overview of last form responses :\n\n';// text title
+  var html = '<b>Overview of last form responses :</b><br><br><table style="border-collapse:collapse;"border = 1 cellpadding = 5 >';// html tags with styles    
+  var table = '';
+    for(var tt=0;tt<dataArray[0].length;tt++){
+      table+= '<th valign="top" bgcolor="'+color+'" cellpadding=5>'+dataArray[0][tt]+'</th>';
+      textMsg+='\t'+dataArray[0][tt];
+    };// first loop is for the headers
+  color='#FFC';// yellowish color for the table content
+  textMsg+='\n';
+  table+='</th><tr valign="middle" bgcolor="'+color+'" cellpadding=5>';
+  for(var n=1;n<dataArray.length;n++){
+    var row = dataArray[n];
+    for(tt=0;tt<row.length;tt++){
+      table+= '<td>'+row[tt]+'</td>';
+      textMsg+='\t'+row[tt];
+    };// second loop is for table items
+    table+='</tr><tr valign="middle" bgcolor="'+color+'" cellpadding=5>'  ;
+  textMsg+='\n';
+  }
+  table+='</tr></table>';
+  var msghtml = html+table;
+  textMsg+='\n';
+  Logger.log(msghtml);// check in the logger (optional)
+  Logger.log(textMsg);// check in the logger (optional)
+  return [msghtml,textMsg];// return 2 values in an array
+}
+
+/* Global variables declaration
+/  You should define the email address in this first variable (theEmailOfYourBoss)
+/  other parameters and variable are also defined as global variables
+/  like the folderName and Gmail Label,
+/  these can be customized to your need below  
+/  code should be embedded in a document.
+*/
+var theEmailOfYourBoss = 'example@example.com';
+var boss = ScriptProperties.getProperty('bossEmail');
+if(boss == null){ // test if email already exists
+  ScriptProperties.setProperty('bossEmail',theEmailOfYourBoss);
+}
+var trigger = ScriptProperties.getProperty('bossEmailTrigger');
+if(trigger == null){ // test if Trigger already exists
+  var trigger = ScriptApp.newTrigger('takeCareOfTheseEmails').timeBased().everyDays(1).atHour(2).create();
+  ScriptProperties.setProperty('bossEmailTrigger',trigger.getUniqueId());// save the trigger ID
+}
+var rootFolder = DriveApp.getRootFolder();
+var Bossmails = GmailApp.getUserLabelByName('Boss-Emails');
+if(Bossmails==null){
+  // if you don't have an 'Boss-Emails' label then create it
+  pub = GmailApp.createLabel('Boss-Emails');
+}
+var BossFolder = DriveApp.getFoldersByName('Boss_Files');
+if(BossFolder.hasNext()){
+  BossFolder = BossFolder.next();
+}else{
+  BossFolder = DriveApp.createFolder('Boss_Files');
+}
+
+// function starts here
+
+function takeCareOfTheseEmails(){
+  var doc = DocumentApp.getActiveDocument();// this document
+  var body = doc.getBody();
+  var inBoxThreads = GmailApp.getInboxThreads(0,100);
+  // get the 100 most recent threads and loop into it
+  for(var n=0;n<inBoxThreads.length;n++){ 
+    var labelName = '';
+    for(var l in inBoxThreads[n].getLabels()){labelName+=inBoxThreads[n].getLabels()[l].getName()};
+    Logger.log(labelName+' labelName.indexOf(Boss-Emails) = '+labelName.indexOf('Boss-Emails')) ;   
+    if(labelName.indexOf('Boss-Emails')>-1){continue};
+    var reject = false; // just a flag we use in the for loops
+    // get the messages in each thread and store attachments in an array
+    var messages = inBoxThreads[n].getMessages();
+    for(var m=0;m<messages.length;m++){
+      var attach = []; 
+      // get the sender email and check if it comes from the boss
+      var sender = messages[m].getFrom();
+      if(sender.indexOf(boss)==-1){reject = true};
+      if(reject){n++; break };
+      inBoxThreads[n].addLabel(Bossmails);
+      // get message date, subject, attachments and body
+      var msgDate = Utilities.formatDate(messages[m].getDate(), Session.getTimeZone(),'MM-dd-yyyy @HH:mm');
+      var msgSubject = messages[m].getSubject(); 
+      var attachments = messages[m].getAttachments();
+      var msgBody = messages[m].getBody();
+      var msgBodyDocHtml = DriveApp.createFile('msg received on '+msgDate,msgBody,MimeType.HTML);
+      // move the file to its folder and remove it from 'my drive'
+      BossFolder.addFile(msgBodyDocHtml);
+      rootFolder.removeFile(msgBodyDocHtml);
+      // get the corresponding blob if we want to send it as attachment, get the thumbnail if exists
+      var bodyDocUrl=msgBodyDocHtml.getUrl();
+      var msgBodyBlob = msgBodyDocHtml.getBlob(); 
+      var msgBodyDocThumb = msgBodyDocHtml.getThumbnail();
+      // retrieve a text version of the message and keep only the 400 first characters
+      var textSummary = getTextFromHtml(msgBody);
+      var length = (textSummary.length <400 ? textSummary.length : 400);
+      textSummary = textSummary.substr(0,length)+'..............'; 
+      var attSize = 0;
+      var attName = 'no attachment';
+      var attUrl = '---';
+      // define a header for attachment display
+      attach.push(['attachment name','attachment Size','attachment url']);
+      for(var a in attachments){
+         // get the size, name and url of the attachment
+        attSize = attachments[a].getSize()+' bytes';
+        attName = '/Boss_Files/'+attachments[a].getName();
+        attUrl = BossFolder.createFile(attachments[a]).getUrl();
+        // store file/name and size in an array
+        attach.push([attName,attSize,attUrl]);
+      }
+     body.appendParagraph('Thread Nr '+n+', Message nr '+m+'\rReceived on '+msgDate+' from '
+        +sender.split('<')[0]+' with Subject : "'+msgSubject+'"\rStarting with : \r'+textSummary).setAttributes(bodyStyle);
+      // show a link to the message stored in drive and show thumbnail & attachment name if exist
+      body.appendParagraph('View here').setLinkUrl(bodyDocUrl);
+      if(msgBodyDocThumb){body.appendImage(msgBodyDocThumb)};
+      if(attach.length>1){ 
+        var table = body.appendTable(attach).setAttributes(tableStyle).setBorderColor('#aaaaaa');
+        for(var r = 0 ; r<table.getNumRows() ; r++){
+          var row = table.getRow(r);
+          for(var c = 0 ; c < row.getNumCells(); c++){
+            var cell = row.getCell(c).setAttributes(cellStyle);
+            }
+        }
+      }
+      body.appendHorizontalRule();
+    }
+  }
+  // flush all changes and save the doc
+  doc.saveAndClose();
+}
+
+// this function borrowed from stackoverflow contributor Corey G
+function getTextFromHtml(html) {
+  return getTextFromNode(Xml.parse(html, true).getElement());
+}
+
+function getTextFromNode(x) {
+  switch(x.toString()) {
+    case 'XmlText': return x.toXmlString();
+    case 'XmlElement': return x.getNodes().map(getTextFromNode).join('');
+    default: return '';
+  }
+}
+
+// style definitions as global variables
+  var tableStyle = {};// define a tyle for table
+  tableStyle[DocumentApp.Attribute.FONT_SIZE] = 8;
+  tableStyle[DocumentApp.Attribute.FONT_FAMILY] =DocumentApp.FontFamily.ARIAL_NARROW;
+  tableStyle[DocumentApp.Attribute.FOREGROUND_COLOR] = "#FF5555";
+  tableStyle[DocumentApp.Attribute.BORDER_WIDTH] = 0.5;
+  var bodyStyle = {};// define a style for body
+  bodyStyle[DocumentApp.Attribute.FONT_SIZE] = 10;
+  bodyStyle[DocumentApp.Attribute.FONT_FAMILY] = DocumentApp.FontFamily.ARIAL;
+  bodyStyle[DocumentApp.Attribute.FOREGROUND_COLOR] = "#555555";
+  bodyStyle[DocumentApp.Attribute.MARGIN_LEFT] = 20;
+  bodyStyle[DocumentApp.Attribute.MARGIN_BOTTOM] = 20;
+  bodyStyle[DocumentApp.Attribute.MARGIN_RIGHT] = 20;
+  bodyStyle[DocumentApp.Attribute.MARGIN_TOP] = 20;
+  var cellStyle = {};// define a style for cells individually
+  cellStyle[DocumentApp.Attribute.PADDING_BOTTOM] = 0;
+  cellStyle[DocumentApp.Attribute.PADDING_TOP] = 5;
+  cellStyle[DocumentApp.Attribute.PADDING_LEFT] = 5;
+  cellStyle[DocumentApp.Attribute.PADDING_RIGHT] = 0;
+  cellStyle[DocumentApp.Attribute.HEIGHT] = 15;
+// end of file
+
+
+

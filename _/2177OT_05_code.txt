@@ -1,0 +1,138 @@
+function doGet() {
+  var app = UiApp.createApplication().setTitle('Age In Hours');
+  var grid = app.createGrid(3,2);
+  var handler = app.createServerHandler('myAgeInHours').addCallbackElement(grid);
+  var time = app.createListBox().setName('time').addItem('Choose the hour',-1);
+  for(var n=0 ; n<24 ; n++){time.addItem(n+' h',n)};
+  var date = app.createDateBox().setName('date');
+  var button = app.createButton('Show me...',handler);
+  grid.setWidget(0,0,date).setWidget(0,1,time).setWidget(1,0,button);
+  app.add(grid);
+  return app;
+}
+
+function myAgeInHours(e){
+  var app = UiApp.getActiveApplication();
+  var myBirthDate = e.parameter.date.getTime();// the returned value for date (in milliseconds)
+  var time = Number(e.parameter.time) == - 1 ? 0 : Number(e.parameter.time);// the returned value in hours combined with a condition
+  myBirthDate = parseInt(myBirthDate/3600000, 10);
+  var today = parseInt(new Date().getTime()/3600000, 10);
+  app.add(app.createLabel().setText('there are '+(today-myBirthDate-time)+' hours between now and your birth date !'));// write the result in a ‘label’
+  return app; // this tells the script to update the Ui
+}
+
+// Document Ids as global variables
+var sharedDocID = '1f4uW-0l3xsmQspsseipDcHIw_mUC1kpEQ6Js7rhFUxk'
+var sharedSpreadSheetID = '1Sa9Mah6eFbjZBEq5t0GtyMo_NjHZfnJ-SXwW409xUD8'
+
+function updateSite() {
+ var ss = SpreadsheetApp.openById(sharedSpreadSheetID);
+ var sh = ss.getSheetByName('Sheet1');
+ var data = sh.getDataRange().getValues();
+ var headers = data.shift();// Monday Tuesday Wednesday Tuesday Friday Saturday Sunday
+ var todayInSheet = new Date().getDay() == 0 ? 7 : new Date().getDay();// in JS monday is 1 and sunday is 0 so we need a bit of logic there
+ var menuData = [];// the actual meal
+ var menuTitle = [];// starter, main course...
+ for(var n=0 ; n<data.length ; n++){
+   menuData.push(data[n][todayInSheet]);
+   menuTitle.push(data[n][0]);
+ }
+ Logger.log('\ndata = '+menuData+'\nTitle = '+menuTitle);
+ var menuFolder = DriveApp.getFoldersByName('Menu online');
+ if(menuFolder.hasNext()){
+    var menuFolder = menuFolder.next();
+   }else{
+     menuFolder = DriveApp.createFolder('Menu online');
+   }
+var docCopy = DriveApp.getFileById(sharedDocID).makeCopy('menu['+headers[todayInSheet]+']');
+  menuFolder.addFile(docCopy);
+  DriveApp.getRootFolder().removeFile(docCopy);
+var docCopyId = docCopy.getId();
+  if(ScriptProperties.getProperty('docCopyId')!=null){
+var fileToDelete = DriveApp.getFileById(ScriptProperties.getProperty('docCopyId')).setTrashed(true);// delete the old copy
+  }
+  ScriptProperties.setProperty('docCopyId', docCopyId);// and store the id of the new one
+  var copy = DocumentApp.openById(docCopyId);
+  copy.getBody().replaceText('#day#',headers[todayInSheet]);
+  for(var n=0 ; n<menuTitle.length-1 ; n++){ // loop every item except image url
+    copy.getBody().replaceText('#'+menuTitle[n]+'#',menuData[n]);
+  }
+  var image = DriveApp.getFileById(menuData[n].split('d/')[1].split('/')[0]).getBlob();// retrieve ID from url
+var imagePlace = copy.getBody().findText('#'+menuTitle[n]+'#').getElement().getParent();
+  imagePlace.asParagraph().appendInlineImage(image).setWidth(300).setHeight(200);
+  imagePlace.asText().deleteText(0, 22);
+  copy.saveAndClose();
+ var htmlContent = "<table class='sites-layout-name-one-column sites-layout-hbox' cellspacing='0'><tbody><tr><td class='sites-layout-tile sites-tile-name-content-1'><div dir='ltr'><div/><div><div class='sites-embed-align-left-wrapping-off'><div style='width:100%;' class='sites-embed-border-on sites-embed sites-embed-full-width'><h4 class='sites-embed-title'> </h4><div style='display:none;' class='sites-embed-object-title'> </div><div class='sites-embed-content sites-embed-type-writely'><iframe frameborder='0' title=' ' height='900' width='100%' src='http://docs.google.com/document/preview?hgd=1&amp;id="+docCopyId+"'/></div></div></div></div><hr/></div></td></tr></tbody></table>"
+//  var site = SitesApp.getActiveSite();
+  var site = SitesApp.getSite('privategasexperiments');
+var oldPage = site.getChildByName('menuoftheday')
+  if(oldPage!=null){oldPage.deletePage()};
+  var newPage = site.createWebPage('Menu of the day', 'menuoftheday', htmlContent);
+}
+
+// this script will be embedded in your public site so it is the active one
+// change this global variable to yours
+var privateSite = SitesApp.getSite('myPrivateSiteName');
+
+function updateSite() {
+  var today = new Date().getDay();// in JS sunday is 0 
+  var pageNames = ['sunday','monday','tuesday','wednesday','thursday','friday','saturday'];// the page names in an array
+  var site = SitesApp.getActiveSite();
+  var pageToUse = privateSite.getChildByName(pageNames[today]+'_template')
+  if(pageToUse == null){ // if the page is not a template yet
+    pageToUse = privateSite.getChildByName(pageNames[today]).publishAsTemplate(pageNames[today]+'_template'); // then make it a template
+    privateSite.getChildByName(pageNames[today]).setName(pageNames[today]+'_draft');// and save the draft with a new name
+  }
+  var oldPage = site.getChildByName('menuoftheday')
+  if(oldPage!=null){oldPage.deletePage()};// delete the current page after checking it exists
+  var newPage = site.createPageFromTemplate('Menu for '+pageNames[today], 'menuoftheday', pageNames[today]+'_template');// and create the page with the right name and title from the template
+}
+
+function GrantAccess(eventInfo) {
+  Logger.log(JSON.stringify(eventInfo));
+  var time = eventInfo.namedValues['Timestamp'];
+  var userName = eventInfo.namedValues['user name'];
+  var comment = eventInfo.namedValues['a comment'];
+  var site = SitesApp.getSite('gettingstartedwithgas');
+  var userPage = site.getChildByName('login/users');
+  var logUsers = 'Logged Users list :<br><br>';
+  var sheet = SpreadsheetApp.getActive().getSheetByName('Form Responses 2');
+  var data = sheet.getDataRange().getValues();// get data from sheet
+  var headers = data.shift();
+  data.sort(function(x,y){// adding a function to sort
+    var xp = x[1]; // allows to sort on column B
+    var yp = y[1];
+    return xp == yp ? 0 : xp<yp ? -1 : 1;// sort 'ascending'
+  });
+  var unique = [];// create new array to store data without duplicates
+  unique.push(data[0]);// keep the first item
+  for(var n=1 ; n<data.length ; n++){ // loop through data
+    if(data[n][1]+data[n][2] != data[n-1][1]+data[n-1][2]){
+      unique.push(data[n]);// if different that previous then keep
+    }
+  }
+  unique.unshift(headers);// add the header back on top of the array
+  for(var n=0 ; n<unique.length ; n++){
+    Logger.log(unique[n]);// just to check more easily the sorting and duplicate remove
+    logUsers+='<br>'+unique[n].join('  -  ');
+  }
+  userPage.setHtmlContent(logUsers);
+  sheet.getDataRange().clear();// clear the sheet
+  sheet.getRange(1,1,unique.length, unique[0].length).setValues(unique);// and write the new values
+}
+/* {"namedValues":{"user name":["test name"],"a comment":["gxfgxdfhdgfhjfgjhfgjxfgj"],"Timestamp":["1/2/2014 22:17:24"]},"values":["1/2/2014 22:17:24","test name","gxfgxdfhdgfhjfgjhfgjxfgj"],"source":{},"range":{"rowStart":2,"rowEnd":2,"columnEnd":3,"columnStart":1}}
+*/  
+
+function testGrantAccess() {
+  var eventInfo = {};
+  var namedValues = {};  
+  namedValues['Timestamp'] = '2010/03/12 15:00';
+  namedValues['user name'] = 'bob smith';
+  namedValues['a comment'] = 'Bla';
+  eventInfo['namedValues'] = namedValues
+  GrantAccess(eventInfo);
+}
+
+
+
+

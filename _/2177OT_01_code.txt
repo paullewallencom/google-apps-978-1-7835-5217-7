@@ -1,0 +1,102 @@
+function myAgeInHours(){
+  var myBirthDate = new Date('1958/02/19 02:00:00').getTime();
+  myBirthDate = parseInt(myBirthDate/3600000, 10);
+  var today = parseInt(new Date().getTime()/3600000, 10);
+  return today-myBirthDate;
+}
+
+function myAgeInHoursWithLogs(){
+  var myBirthDate = new Date('1958/02/19 02:00:00').getTime();
+  Logger.log(myBirthDate);
+  myBirthDate = parseInt(myBirthDate/3600000, 10);
+  Logger.log(myBirthDate);
+  var today = parseInt(new Date().getTime()/3600000, 10);
+  Logger.log(today);
+  Logger.log(today-myBirthDate);
+  return today-myBirthDate;
+}
+
+function myAgeInHoursWithSmartLogs(){
+  var myBirthDate = new Date('1958/02/19 02:00:00').getTime();
+  Logger.log("myBirthDate = "+myBirthDate);
+  myBirthDate = parseInt(myBirthDate/3600000, 10);
+  Logger.log("myBirthDate in hours (parseInt(myBirthDate/3600000, 10)) = "+myBirthDate);
+  var today = parseInt(new Date().getTime()/3600000, 10);
+  Logger.log("today in hours = %s",today);
+  Logger.log("today-myBirthDate = %s",today-myBirthDate);
+  return today-myBirthDate;
+}
+
+function resetPageLayout() {
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  var sh = ss.getSheetByName('Sheet1');
+  ss.toast('Now processing your sheet','Wait a few seconds',5);
+  var header1 = sh.getRange('A1:G1').mergeAcross().setBackground('silver').setValue('Party menu suggestion');
+  var header2 = sh.getRange(2,1,1,7).setBackground('#aaaaff').setValues([['First Name','Last Name','Drink','Softs','Appetizers','Meal','Dessert']]);
+  sh.getRange(1,1,2,7).setBorder(true,true,true,true,true,true).setHorizontalAlignment('center').setVerticalAlignment('middle').setFontWeight('bold').setFontSize(14);
+  var columnWidth = [150,150,180,180,180,300,200];
+  for(var n=0; n < columnWidth.length ; n++){
+    sh.setColumnWidth(n+1,columnWidth[n]);
+  }
+  sh.insertColumnAfter(7).deleteColumns(8,sh.getMaxColumns()-7);
+  sh.insertRows(sh.getLastRow()+1,20);
+  sh.deleteRows(sh.getLastRow()+1, sh.getMaxRows()-sh.getLastRow()-10);
+  sh.getRange(3,1,sh.getMaxRows()-2,sh.getLastColumn()).setBorder(false, true, false, true, true, false);// top, left, bottom, right, vertical, horizontal
+  for(var n=sh.getLastRow() ; n > 3 ; n--){
+    Logger.log(n+'  '+sh.getRange(n,1,1,7).getValues())
+    if(sh.getRange(n,1,1,7).getValues().toString().replace(/,/g,'')==''){
+      sh.deleteRow(n);
+      Logger.log('row '+n+' deleted');
+    }
+  }
+  sh.setFrozenRows(2);
+  SpreadsheetApp.flush();
+  Browser.msgBox('Now your sheet should be clean again !');
+}
+
+function createMenu(){
+  var menuEntries = [ {name: "resetPageLayout", functionName:"resetPageLayout"}];
+  var sh = SpreadsheetApp.getActiveSpreadsheet();
+  sh.addMenu("Format utilities",menuEntries);   
+}
+
+function fill100Cells(){
+  var start = new Date().getTime();
+  var sh = SpreadsheetApp.getActiveSpreadsheet().getActiveSheet();
+  for(var n=1 ; n<=100 ;n++){
+    sh.getRange(n,1).setValue('This cell is filled');
+  }
+  Browser.msgBox('Execution time : '+(new Date().getTime()-start)+' milliseconds');
+}
+
+function fill100CellsatOnce(){
+  var start = new Date().getTime();
+  var sh = SpreadsheetApp.getActiveSpreadsheet().getActiveSheet();
+  sh.getRange(1,1,100,1).setValue('This cell is filled');
+  Browser.msgBox('Execution time : '+(new Date().getTime()-start)+' milliseconds');
+}
+
+function myFunction(e) {
+  var sheetIndex = e.source.getSheets().length;// to know how many sheet we already have
+  var sourceValues = e.source.getActiveSheet().getDataRange().getValues();// get all the data from this sheet
+  var cell = e.source.getActiveRange().getA1Notation();// get A1 notation for comfort of use
+  Logger.log('SheetName:'+e.source.getActiveSheet().getSheetName() +'  user:'+Session.getActiveUser());
+  if(cell=='A1' && e.source.getSheetName()=='Sheet1'){ // execute only if cell A1 and Sheet1, else do nothing
+    var copy = e.source.insertSheet('SheetCopy_'+sheetIndex,sheetIndex);// create a copy at the last index
+    copy.getRange(1,1,sourceValues.length,sourceValues[0].length).setValues(sourceValues);// clone sheet1 values only, no format
+    var permissions = copy.getSheetProtection();
+    permissions.removeUser(Session.getActiveUser());// who is editing ? remove him from editors (does not work for owner of course)
+    permissions.setProtected(true);
+    copy.setSheetProtection(permissions);// protect the copy, the original editor of the sheet can't change it anymore
+    e.source.getSheetByName('Sheet1').activate();// reset the browser to Sheet 1, not on the copy
+  } 
+}
+
+function sendThisSsAsPdf(){
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  var ssID = ss.getId();// get the file unique id to use with driveApp
+  var pdf = DriveApp.getFileById(ssID).getAs('application/pdf');// get the file content in pdf format
+  var saveCopy = DriveApp.createFile(pdf);// create a copy in your drive
+  MailApp.sendEmail(Session.getEffectiveUser().getEmail(),'This is a copy of your spreadsheet','This is a pdf copy of your spreadsheet as an attachment to this message\n'+
+                    'This mail was sent to you on '+Utilities.formatDate(new Date(), Session.getTimeZone(), "MMM-dd-yyyy @ HH:mm"),{attachments : [pdf]});// send the email with a simple message
+}

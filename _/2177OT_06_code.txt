@@ -1,0 +1,433 @@
+
+var styleGrid = {'padding':'50px', 'background':'#FFA'};
+var styleButton = {'padding':'15px', 'border-radius':'10px', 'borderWidth':'5px', 'borderColor':'#DDD','fontSize':'16pt'};
+
+function doGet() {
+  var app = UiApp.createApplication().setTitle('Age In Hours');
+  var grid = app.createGrid(3,2).setStyleAttributes(styleGrid);
+  var handler = app.createServerHandler('myAgeInHours').addCallbackElement(grid);
+  var time = app.createListBox().setName('time').addItem('Choose the hour',-1);
+  for(var n=0 ; n<24 ; n++){time.addItem(n+' h',n)};
+  var date = app.createDateBox().setName('date');
+  var button = app.createButton('Show me...',handler).setStyleAttributes(styleButton);
+  grid.setWidget(0,0,date).setWidget(0,1,time).setWidget(1,0,button);
+  app.add(grid);
+  return app;
+}
+
+function myAgeInHours(e){
+  Logger.log(JSON.stringify(e));
+  var app = UiApp.getActiveApplication();
+  var myBirthDate = e.parameter.date.getTime();// the returned value for date (in milliseconds)
+  var time = Number(e.parameter.time) == - 1 ? 0 : Number(e.parameter.time);// the returned value in hours combined with a condition
+  myBirthDate = parseInt(myBirthDate/3600000, 10);
+  var today = parseInt(new Date().getTime()/3600000, 10);
+  app.add(app.createLabel().setText('there are '+(today-myBirthDate-time)+' hours between now and your birth date !'));// write the result in a ‘label’
+  return app; // this tells the script to update the Ui
+}
+
+
+//----------------------------------------------------------------
+//  Global variable
+//----------------------------------------------------------------
+  var email = String(Session.getUser().getUserLoginId());
+ //
+function doGet(){  
+  var app = UiApp.createApplication().setHeight(400).setWidth(650).setStyleAttribute('background', 'beige').setTitle("Group calendar manager");
+  var panel = app.createAbsolutePanel().setStyleAttribute('padding', '25');
+  var Vpanel = app.createVerticalPanel();
+  var grid = app.createGrid(6, 2).setWidth('550').setId('grid');
+  var Slist= app.createListBox(true).setName("slb").setId("slb").setVisibleItemCount(16).setWidth("180").setStyleAttribute('margin-left', '5px');
+  var Ulist= app.createListBox(true).setName("ulb").setId("ulb").setVisibleItemCount(16).setWidth("195").setStyleAttribute('margin-left', '5px');
+  var subs = app.createButton("Subscribe to selected calendars").setWidth("180");
+  var unsubs = app.createButton("Unsubscribe from selected calendars").setWidth("195");  
+  var quit = app.createButton("Quit (and delete any personal data from this application)");  
+  var avert = app.createLabel("Only group calendar are listed here, your personal calendar won't appear",true).setWidth('250');
+  var comment = app.createLabel("You can select more that one calendar at a time",true).setWidth('250');
+  var wait = app.createLabel("****  PLEASE WAIT  ****",true).setWidth('250').setStyleAttribute('borderWidth', '2').setStyleAttribute('background','yellow').setId('wait').setVisible(false);
+  var ok = app.createLabel("Your calendars have been updated. Allow a couple of seconds before checking",true).setWidth('250').setVisible(false).setId('ok');
+  var log = app.createLabel("You are connected as "+email,true).setWidth('250').setStyleAttribute('background','white').setStyleAttribute('padding', '8').setStyleAttribute('margin-left', '5px');
+  var end = app.createHTML("<BR><BR>Thanks for using this application, you may close this window<BR><BR><BR>© serge 2014").setId('end').setVisible(false);  
+  var anchor = app.createAnchor('to calendar page', 'https://www.google.com/calendar');
+  grid.setWidget(0, 0, Slist)
+      .setWidget(0, 1, Ulist)
+      .setWidget(1, 0, subs)
+      .setWidget(1, 1, unsubs)
+      .setWidget(2, 1, avert)
+      .setWidget(2, 0, comment)
+      .setWidget(3, 0, wait)
+      .setWidget(4, 0, log)
+      .setWidget(5, 0, quit)  
+      .setWidget(4, 1, anchor)    
+      .setWidget(5, 1, ok);// place all widgets on the grid  
+  Vpanel.add(grid).add(end);
+  app.add(panel.add(Vpanel));  
+  updateLists(Slist,Ulist);// call the function to populate the lists     
+  var handlerSub = app.createServerHandler("calsub").addCallbackElement(grid);
+      subs.addClickHandler(handlerSub);
+  var handlerUnsub = app.createServerHandler("calunsub").addCallbackElement(grid);
+      unsubs.addClickHandler(handlerUnsub);
+  var handlerQuit = app.createServerHandler("quit").addCallbackElement(grid);
+      quit.addClickHandler(handlerQuit);
+  var cliHandlerSub = app.createClientHandler()
+     .forTargets(wait).setVisible(true);
+     subs.addClickHandler(cliHandlerSub);
+  var cliHandlerUnsub = app.createClientHandler()
+     .forTargets(wait).setVisible(true);
+     unsubs.addClickHandler(cliHandlerUnsub);   
+  return app;
+}
+
+function updateLists(Slist,Ulist){
+  var app = UiApp.getActiveApplication();
+  var db = ScriptDb.getMyDb();// create a Db instance
+  var results = db.query({name: db.anyValue()}).sortBy("name", db.ASCENDING, db.LEXICAL);// get date from dB, sorted ascending
+  var grouplist = [];
+  while (results.hasNext()) {
+    var item = results.next();
+    Logger.log('item added to grouplist = '+item);
+    grouplist.push([item.name,item.url]);
+  }
+  var emptyU = true;
+  var emptyS = true;
+  var Ulistvalid = [];// unsubscribe list
+  var Slistvalid = [];// subscribe list
+  var userlist = [];
+  var Clist = CalendarApp.getAllCalendars();  
+  for(cc=0;cc<Clist.length;++cc){
+    userlist.push(Clist[cc].getName());
+    Logger.log('Clist[cc].getName() = '+Clist[cc].getName());
+    if(grouplist.toString().match(Clist[cc].getName())==Clist[cc].getName()){Ulistvalid.push([Clist[cc].getName(),Clist[cc].getId()])}
+  }
+  Logger.log('Ulistvalid  = '+Ulistvalid);
+  Logger.log('userlist  = '+userlist);
+  for(cc=0;cc<Ulistvalid.length;++cc){
+    Ulist.addItem(Ulistvalid[cc][0],Ulistvalid[cc][1]);
+    emptyU = false;
+  }      
+  for(cc=0;cc<grouplist.length;++cc){
+    if(userlist.indexOf(grouplist[cc][0])==-1){
+      Slist.addItem(grouplist[cc][0],grouplist[cc][1]);
+      emptyS = false;
+    }
+  }
+  if(emptyS){Slist.addItem('No Calendar available')};
+  if(emptyU){Ulist.addItem('No calendar found')};
+}
+
+
+function calsub(e){
+  var app = UiApp.getActiveApplication();                 
+  if(e.parameter.slb ==''){return};// if no calendar is selected return immediately
+  var Slist = app.getElementById('slb');             
+  var Ulist = app.getElementById('ulb');  
+  var ok = app.getElementById('ok').setText("Your calendars have been updated. Allow a couple of seconds before checking");
+  var calsubID = e.parameter.slb.split(',');// split the string to get back an array
+  Logger.log('calsubID = '+calsubID);       
+  for(nn=0;nn<calsubID.length;++nn){
+    try{
+      CalendarApp.subscribeToCalendar(calsubID[nn]);
+    }catch(err){
+      Logger.log(err)
+      ok.setText("Error trying to get calendar, please retry - "+err);
+      break;//if error exit loop
+    }  
+  }
+  Ulist.clear();
+  Slist.clear();
+  updateLists(Slist,Ulist);// updates the lists     
+  ok.setVisible(true);//show the confirmation or error message
+  app.getElementById('wait').setVisible(false);// hide the wait message
+  return app;//update Ui
+}
+
+function calunsub(e){
+  var app = UiApp.getActiveApplication();                 
+  if(e.parameter.ulb ==''){return};// if no calendar is selected return immediately
+  var Slist = app.getElementById('slb');                   
+  var Ulist = app.getElementById('ulb');                   
+  var ok = app.getElementById('ok').setText("Your calendars have been updated. Allow a couple of seconds before checking");
+  var calunsubID = e.parameter.ulb.split(',');// split the string to get back an array
+  for (n=0;n<calunsubID.length;++n){
+    Logger.log('calunsubID[n] = '+calunsubID[n]);
+    try{
+      CalendarApp.getCalendarById(calunsubID[n]).unsubscribeFromCalendar();
+    }catch(err){
+      Logger.log('ERROR message : '+err);
+      ok.setText("Error trying to get calendar, please retry - "+err);
+      break;//if error exit loop
+    }
+  }
+  ok.setVisible(true);//show the confirmation or error message
+  app.getElementById('wait').setVisible(false);// hide the wait message
+  Ulist.clear();
+  Slist.clear();
+  updateLists(Slist,Ulist);// update lis(removed calendars are gone)     
+  return app;//update Ui
+}
+
+function quit(){
+  var app = UiApp.getActiveApplication();                 
+  var grid = app.getElementById('grid').setVisible(false);
+  var end = app.getElementById('end').setVisible(true);
+  return app
+}
+
+function getlistFromSS(){
+  var ss = SpreadsheetApp.getActiveSpreadsheet()
+  var sh = ss.getSheets()[0];
+  var last =  ss.setActiveSheet(ss.getSheets()[0]).getLastRow();
+  var list = sh.getRange(1,1,last,2).getValues();
+  var key = [] ; var value = []
+  deleteDb_()
+  for(cc=0;cc<list.length;++cc){
+    key.push(list[cc][0]);
+    value.push(list[cc][1]);
+  }
+  for(cc=0;cc<key.length;++cc){
+    var db = ScriptDb.getMyDb()
+    db.save({name:key[cc], url:value[cc]})    
+    Logger.log(key[cc]+' --->  '+value[cc])
+  }
+}
+
+function deleteDb_(){
+  var db = ScriptDb.getMyDb();
+  var results = db.query({name: db.anyValue()});
+  while (results.hasNext()) {
+    var item = results.next();
+    db.remove(item);
+  }
+}
+
+function getCallist(){
+  var sh = SpreadsheetApp.getActiveSheet();
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  var last = ss.getLastRow()==0 ? 1 : ss.getLastRow();
+  sh.getRange(4, 1,last,2).clearContent();                      
+  var list = new Array();
+  list = CalendarApp.getAllCalendars()
+  for (n=0;n<list.length;++n){
+    var name = list[n].getName() ;                     
+    var id = list[n].getId() ;                     
+    sh.getRange(n+1,1).setValue(name)  ;                   
+    sh.getRange(n+1,2).setValue(id)  ;                   
+  }                 
+}
+
+function doGet() {
+  var app = UiApp.createApplication().setTitle('Checking user').setStyleAttribute('background', '#DDD');
+  var mainPanel = app.createVerticalPanel().setStyleAttribute('padding','25');
+  var reject = app.createHTML("Hello,<BR><BR>You are connected with the user name <B>"+email+"</B> who is not authorized to use this app,<BR><BR>"+
+                             "If you think this is an error please contact the owner of this app at xxx@gmail.com<BR><BR>Thank you.").setStyleAttribute('padding','25');
+  for(n=0;n<client.length;++n){
+    if(client[n].match(email)==email){
+        var clientOK = true ; var name = client[n][0] ;
+        break;
+       };
+  }
+  if(!clientOK){
+    app.add(reject);
+    MailApp.sendEmail('scriptowner@gmail.com', 'Someone with address ', email+' tried to connect without authorization,  think about calling him to chack what happened...');
+    return app;
+  }
+  // here comes the normal code
+  app.add(app.createLabel('Everything went right !!'));
+  return app;
+}
+
+function doGet(e) {
+  var user = e.parameter.user;
+  if(user!='giovanni'){return ContentService.createTextOutput("Logging error, you are not authorized to use this app").setMimeType(ContentService.MimeType.TEXT)};
+  Logger.log('user = '+user  )
+  var ss = SpreadsheetApp.openById('0AnqSFd3iikE3dFBub2t1Ry1PaXJUMUVkSVVSempCenc');
+  var data = ss.getSheetByName('Farmer prices').getDataRange().getValues();
+  var outString = '';
+  for(var n=0 ; n<data.length ; ++n){
+    if(data[n][0]==''){ continue };
+    var dataRow = data[n][1]+','+data[n][4]+';\n';// \n is the “new line” character
+    outString+=dataRow;// compose the output string
+  }
+    Logger.log('outString = '+outString);
+    var result = ContentService.createTextOutput(outString).setMimeType(ContentService.MimeType.CSV);// serve the string as a csv file to download
+    return result;
+}
+
+function doGet(e) {
+  if(e.parameter.mode==null){return ContentService.createTextOutput("error, wrong request").setMimeType(ContentService.MimeType.TEXT)};
+  var row = Number(e.parameter.row);
+  var col = Number(e.parameter.col);
+  var mode = e.parameter.mode;
+  var value = e.parameter.value;
+  var ss = SpreadsheetApp.openById('19FdtPgo3pAciO6-gU6pZDyP7baiv4IBKvtW84xX639k');
+  var sh = ss.getSheets()[0];
+  if(mode=='read'){
+    var sheetValue =  sh.getRange(row,col).getValue();
+    Logger.log('value to send = '+sheetValue);
+    var valToReturn = ContentService.createTextOutput(sheetValue).setMimeType(ContentService.MimeType.TEXT);
+    return valToReturn;
+    }
+  if(mode=='write'){
+    sh.getRange(row, col).setValue(value);
+    return ContentService.createTextOutput(value).setMimeType(ContentService.MimeType.TEXT);
+    }
+  return ContentService.createTextOutput('error').setMimeType(ContentService.MimeType.TEXT);
+}
+
+//for info : UrlFetchApp.fetch(url+'?row='+n+'&col='+m+'&mode=write&value='+textBoxValue);
+
+var stylePanel = {'padding':'50px', 'background':'#FFA'};
+var styleButton = {'padding':'5px', 'border-radius':'5px', 'borderWidth':'1px', 'borderColor':'#DDD','fontSize':'12pt'};
+var styleTextItalic = {'fontSize':'12pt','fontStyle':'italic','fontFamily':'arial,sans-serif','color':'#F00'};
+var styleTextNormal = {'fontSize':'12pt','fontStyle':'normal','fontFamily':'arial,sans-serif','color':'#00F'};
+var styleLabel = {'fontSize':'12pt','color':'#F00'};
+var url = 'https://script.google.com/macros/s/AKfycbxbtrK7BoUrGAz1wbkfEbZSE9_HYWOabw4g79yK5-zhvwU0Y5c/exec';
+;
+function doGet() {
+  var app = UiApp.createApplication().setTitle('url_fetch_demo');
+  var panel = app.createVerticalPanel().setStyleAttributes(stylePanel);
+  var headers = ['Field Name','Your answer'];
+  var grid = app.createGrid(7,2);
+  var wait = app.createImage('https://dl.dropboxusercontent.com/u/211279/loading3T.gif').setId('wait').setVisible(false);
+  var handlerWrite = app.createServerHandler('writeSheet').addCallbackElement(grid);
+  var handlerRead = app.createServerHandler('readSheet').addCallbackElement(grid);
+  var Chandler = app.createClientHandler().forTargets(wait).setVisible(true);
+  var buttonWrite = app.createButton('Write to Sheet',handlerWrite).addClickHandler(Chandler).setStyleAttributes(styleButton);
+  var buttonRead = app.createButton('Read from Sheet',handlerRead).addClickHandler(Chandler).setStyleAttributes(styleButton);
+  for(var n=1 ; n < 5 ; n++){
+    for(var m=0 ; m < 2 ; m++){
+      var textBox = app.createTextBox().setText('no value').setName('text'+n+'-'+m).setId('text'+n+'-'+m).setStyleAttributes(styleTextNormal);
+      if(m==0){textBox.setEnabled(false)};// left column is read only
+      grid.setWidget(n,m,textBox);
+    }
+  }
+  grid.setWidget(5,0,buttonRead).setWidget(5,1,buttonWrite).setWidget(6,1,wait)
+  .setWidget(0,0,app.createLabel(headers[0]).setStyleAttributes(styleLabel))
+  .setWidget(0,1,app.createLabel(headers[1]).setStyleAttributes(styleLabel));
+  app.add(panel.add(grid));
+  return app;
+}
+
+function writeSheet(e){
+  var app = UiApp.getActiveApplication();
+  app.getElementById('wait').setVisible(false);// hide the image when we return
+  for(var n=1 ; n < 5 ; n++){
+    var textBoxValue = e.parameter['text'+n+'-1'];
+    Logger.log(textBoxValue);
+    var textBox = app.getElementById('text'+n+'-'+1).setStyleAttributes(styleTextItalic);//update only right column   
+    var write = UrlFetchApp.fetch(url+'?row='+n+'&col=2&mode=write&value='+textBoxValue).getContentText();
+    if(write!=textBoxValue){throw('comm error : response='+write)};
+  }
+  return app;
+}
+
+function readSheet(e){
+  var app = UiApp.getActiveApplication();
+  app.getElementById('wait').setVisible(false);// hide the image when we return
+  for(var n=1 ; n < 5 ; n++){
+    for(var m=0 ; m < 2 ; m++){
+      var textBox = app.getElementById('text'+n+'-'+m).setStyleAttributes(styleTextNormal);
+https://script.google.com/macross/AKfycbyApSkRkea7oZ7CWGUfvBCZLFjVqHJBdxwmDKd-OiWbSzYOYntG/exec      var textValue = UrlFetchApp.fetch(url+'?row='+n+'&col='+(m+1)+'&mode=read').getContentText()
+      Logger.log(textValue);
+      textBox.setText(textValue);
+    }
+  }
+  return app;
+}
+
+function doGet(e) {
+  if(e.parameter.mode==null){return ContentService.createTextOutput("error, wrong request").setMimeType(ContentService.MimeType.TEXT)};
+  var mode = e.parameter.mode;
+  var value = e.parameter.value;
+  var ss = SpreadsheetApp.openById('1yad5sZZt-X6bIftpR--OSyf3VZWf3Jxx8UJBhh7Arwg');
+  var sh = ss.getSheets()[0];
+  if(mode=='read'){
+    var sheetValues =  sh.getDataRange().getValues();// get data from sheet
+    var valToReturn = ContentService.createTextOutput(JSON.stringify(sheetValues)).setMimeType(ContentService.MimeType.JSON);
+    return valToReturn;// send it as JSon string
+  }
+  if(mode=='write'){
+    var val = Utilities.base64Decode(value,Utilities.Charset.UTF_8);// decode base64 and get an array of numbers
+    Logger.log(val);// see it !
+    var stringVal = ''; // create an empty string
+    for(var n in val){
+      stringVal += String.fromCharCode(val[n]);// add each character in turn
+    }
+    var sheetValues =  JSON.parse(stringVal);// convert the string into an object (2D array)
+   Logger.log(sheetValues);// check result
+    sh.getRange(1,1,sheetValues.length,sheetValues[0].length).setValues(sheetValues);// update the sheet
+    return ContentService.createTextOutput(JSON.stringify(sheetValues)).setMimeType(ContentService.MimeType.JSON);// send back the result as a string
+   }
+  return ContentService.createTextOutput('error').setMimeType(ContentService.MimeType.TEXT);// in case mode is not 'read' nor 'write'... should not happen !
+}
+
+var stylePanel = {'padding':'50px', 'background':'#FFA'};
+var styleButton = {'padding':'5px', 'border-radius':'5px', 'borderWidth':'1px', 'borderColor':'#DDD','fontSize':'12pt'};
+var styleTextItalic = {'fontSize':'12pt','fontStyle':'italic','fontFamily':'arial,sans-serif','color':'#F00'};
+var styleTextNormal = {'fontSize':'12pt','fontStyle':'normal','fontFamily':'arial,sans-serif','color':'#00F'};
+var styleLabel = {'fontSize':'12pt','color':'#F00'};
+var url = 'https://script.google.com/macros/s/AKfycbwPioVjYMSrmhKnJOaF2GG83dnstLWI7isU9SF1vxPV8td-g9E7/exec';
+var numRow = 21;// the number of rows in the grid = number of rows in the SS + 1
+;
+function doGet() {
+  var app = UiApp.createApplication().setTitle('url_fetch_demo');
+  var panel = app.createVerticalPanel().setStyleAttributes(stylePanel);
+  var headers = ['Field Name','Your answer'];// grid title
+  var grid = app.createGrid(numRow+2,2);// create the grid with right size
+  var wait = app.createImage('https://dl.dropboxusercontent.com/u/211279/loading3T.gif').setId('wait').setVisible(false);// get a spinner image in animated gif
+  var handlerWrite = app.createServerHandler('writeSheet').addCallbackElement(grid);// 2 handlers for the buttons
+  var handlerRead = app.createServerHandler('readSheet').addCallbackElement(grid);
+  var Chandler = app.createClientHandler().forTargets(wait).setVisible(true);// a client handler for the spinner
+  var buttonWrite = app.createButton('Write to Sheet',handlerWrite).addClickHandler(Chandler).setStyleAttributes(styleButton);
+  var buttonRead = app.createButton('Read from Sheet',handlerRead).addClickHandler(Chandler).setStyleAttributes(styleButton);
+  for(var n=1 ; n < numRow ; n++){
+    for(var m=0 ; m < 2 ; m++){ // create all the textBoxes with names & IDs
+      var textBox = app.createTextBox().setText('no value').setName('text'+n+'-'+m).setId('text'+n+'-'+m).setStyleAttributes(styleTextNormal);
+      //if(m==0){textBox.setEnabled(false)};// prevent writing to left column (optional)
+     grid.setWidget(n,m,textBox);// place widgets
+    }
+  }
+  grid.setWidget(numRow,0,buttonRead).setWidget(numRow,1,buttonWrite).setWidget(numRow+1,1,wait) // place buttons
+  .setWidget(0,0,app.createLabel(headers[0]).setStyleAttributes(styleLabel)) // and headers
+  .setWidget(0,1,app.createLabel(headers[1]).setStyleAttributes(styleLabel));
+  app.add(panel.add(grid));
+  return app; // show Ui
+}
+
+function writeSheet(e){
+  var app = UiApp.getActiveApplication();
+  app.getElementById('wait').setVisible(false);// spinner will be hidden when fct returns
+  var dataArrayImage = [];// an array to get typed values
+  for(var n=1 ; n < numRow ; n++){
+    var row=[];
+    for(var m=0 ; m < 2 ; m++){
+      row.push(e.parameter['text'+n+'-'+m]); // get every value in every "cell"
+      var textBox = app.getElementById('text'+n+'-'+m).setStyleAttributes(styleTextItalic);// update "cells" style
+      //textBox.setText('written value = '+e.parameter['text'+n+'-'+m]);// rewrite to the cells - not usefull but serves to check while debugging
+    }
+    dataArrayImage.push(row);// store one row(=2cells)
+  }
+  var UiValues = JSON.stringify(dataArrayImage);// stringfy the array
+  var newValues = url+'?mode=write&value='+Utilities.base64Encode(UiValues,Utilities.Charset.UTF_8);// add to url & parameters+ encode in pure ASCII characters
+  Logger.log(newValues);// check in logger
+  var check = UrlFetchApp.fetch(newValues).getContent();// get back the result
+  Logger.log(check);// check result = newValues sent back in bytes format
+  return app;//update Ui
+}
+
+function readSheet(e){
+  var app = UiApp.getActiveApplication();
+  app.getElementById('wait').setVisible(false);
+  var returnedValue = UrlFetchApp.fetch(url+'?mode=read').getContentText();// get data from server
+  Logger.log(returnedValue);// check values
+  var sheetValues = JSON.parse(returnedValue);
+  for(var n=1 ; n < numRow ; n++){
+    for(var m=0 ; m < 2 ; m++){
+      var textBox = app.getElementById('text'+n+'-'+m).setStyleAttributes(styleTextNormal);
+      textBox.setText(sheetValues[n-1][m]);// iterate and update cells values
+    }
+  }
+  return app;// update Ui
+}
+
+

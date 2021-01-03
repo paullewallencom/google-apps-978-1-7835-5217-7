@@ -1,0 +1,125 @@
+// Global variable = constants
+var ssId = ScriptProperties.getProperty('ssId');
+if(ssId == null){ 
+ // test if the destination spreadsheet already exists, if not just create it
+ var ss = SpreadsheetApp.create('Form response spreadsheet');
+ ssId = ss.getId();
+ ScriptProperties.setProperty('ssId',ssId);
+}
+
+function createForm(){
+ var formID = ScriptProperties.getProperty('formId');
+ if(formID != null){ 
+   // if the form was already created then do nothing
+   throw('Form already exists') ; return ;
+ }
+ // here we create the form with questions and set the destination spreadsheet
+ var form = FormApp.create('New custom Form for test');
+ form.addTextItem().setTitle('What is your last name ?').setHelpText('Please don\'t be shy...');
+ form.setDestination(FormApp.DestinationType.SPREADSHEET, ssId);
+ var item = form.addCheckboxItem();
+ item.setTitle('What are you ?');
+ item.setChoices([
+   item.createChoice('A man'),
+   item.createChoice('A boy'),
+   item.createChoice('A woman'),
+   item.createChoice('A girl')
+ ]);
+ form.addMultipleChoiceItem().setHelpText('If this question bothers you then just skip it')
+ .setTitle('Do you prefer cars or dolls?')
+ .setChoiceValues(['Cars','Dolls'])
+ .showOtherOption(true)
+ form.addDateItem()
+ .setTitle('When were you born?');
+ form.addGridItem()
+ .setTitle('Rate your interests')
+ .setRows(['Cars', 'Dolls', 'Food'])
+ .setColumns(['annoying', 'no opinion', 'exciting']);
+ ScriptProperties.setProperty('formId',form.getId());
+ ss.getSheets()[0].getRange(1,1,4,2).setValues([['form Url',form.getPublishedUrl()],
+   ['form Edit Url',form.getEditUrl()],['formID',formID],['Spreadsheet Url',ss.getUrl()]]);
+ ss.getSheets()[0].setColumnWidth(1,200).setColumnWidth(2,800);
+ Logger.log('\n\nForm Url = '+form.getEditUrl()+'\n\nGoto this url and paste the code in the FORM script editor\n'+
+            '(only code from the 2cond script file : "Form Code to copy")\n\nThen you won\'t need this script anymore\n\Thank you :-)');
+}
+
+function resetAllKeys(){
+ var keys = ScriptProperties.getKeys();// get every keys in this script
+ for(var n in keys){ScriptProperties.deleteProperty(keys[n])};// and delete them one by one
+}
+
+function onOpen() {
+  var ui = FormApp.getUi();
+  ui.createMenu('Form Custom Tools')
+  .addItem("Show answers in questions", 'showAnswers')
+  .addToUi();
+  // this is how we add a menu in this type of doc, it is slightly different from what we used in spreadsheets
+  showTempSideBar();
+}
+
+function showTempSideBar() { 
+  // this shows a temporary sidebar in the main user interface
+  // it will be explained in details in chapter 7
+  var ui = FormApp.getUi();
+  app = UiApp.createApplication().setTitle("Custom Tools User Interface").setWidth(300)
+  .setTitle("Information sidebar used as a logger").setWidth(300);
+  var message = app.createHTML("If you open this page for the first time<br>"+
+    "please authorize using any item from<br>the menu : <b>'Form Custom Tools'</b><br>"+
+    "<p>This sidebar will show you some<br>informations when you run <br>a function from the menu...")
+  .setStyleAttribute('padding','20px').setId('message');
+  ui.showSidebar(app.add(message)); 
+}
+
+function showAnswers(){
+  var app = UiApp.createApplication().setTitle("Custom Tools User Interface").setWidth(300);
+  app.add(app.createHTML('These are the last values<br>entered in the form').setStyleAttributes({'padding':'20px','background':'brown','color':'beige'}));
+  // set some style on this Ui to get a nice look then align items in a grid
+  var panel = app.createVerticalPanel().setId('panel').setStyleAttributes({'fontSize':'12pt','background':'beige',
+                                                                           'color':'#333333','padding':'10px'}).setHeight('100%').setWidth('100%');
+  var grid = app.createGrid(12,2).setText(0,1,'Questions overview').setText(6,1,'Responses');
+  // don't forget to add the panel to the Ui and the grid to the panel
+  app.add(panel.add(grid));
+  var form = FormApp.getActiveForm();//access this form
+  var sh = SpreadsheetApp.openById(form.getDestinationId()).getSheetByName('Form Responses');
+  //read the whole spreadsheet and get values in an array
+  var data = sh.getDataRange().getValues();
+  var lc = sh.getLastColumn();
+  // we have seen how to clean up a sheet, let's remove unnecessary columns and set appropriate width
+  sh.insertColumnAfter(lc).deleteColumns(lc+1,sh.getMaxColumns()-lc);
+  sh.setColumnWidth(1,160);
+  // last row of data (=last item in the array)is last answer
+  var lastResponse = data.pop();
+  var lastUser = lastResponse[1];
+  // second field is the lastName item (arrays count from 0), shift the array row to get rid of timeStamp in column1
+  lastResponse.shift();
+  var questions = form.getItems();
+  // get all questions and iterate these questions array using the Logger to check content
+  var textToSend = 'Summary of last form response\n';
+  for(var n in questions){ 
+    Logger.log(questions[n].getTitle()+' = '+questions[n].getIndex());
+    // for the 3 first question there is only 1 answer
+    var response = lastResponse[n];
+    // if response is a date, transform it to a userfriendly formated string
+    if(typeof(response)=='object'){response = Utilities.formatDate(response,Session.getTimeZone(),'yyyy/MM/dd')};
+    // the 4th question has 3 choices, show all of them joined together with '&'
+    if(n>3){response = lastResponse.splice(4,3).join(' & ')};
+    // and update the question help value
+    questions[n].setHelpText(lastUser+' has answered "'+response+'", what would you answer ?');
+    updateUi(app,grid,n,questions,response);
+    textToSend += '\n'+questions[n].getTitle()+'\t'+response
+  }
+  MailApp.sendEmail(Session.getActiveUser().getEmail(),'Summary of last form response',textToSend);
+  var ui = FormApp.getUi();
+  ui.showSidebar(app); 
+}
+
+function updateUi(app,grid,n,questions,response){
+  app = showData(grid,n,0,n+' : ' );// display question number
+  app = showData(grid,n,1,questions[n].getTitle());// display question title
+  app = showData(grid,Number(n)+6,0,n+' : ');// display response number
+  app = showData(grid,Number(n)+6,1,response);//display response value
+}
+
+function showData(grid,row,col,text){
+  grid.setText(Number(row)+1,col,text);
+}

@@ -1,0 +1,187 @@
+function camelise(stringArray) {
+  var camelised = [];// this will hold the function result
+  for(var n in stringArray){
+    Logger.log('title original = '+stringArray[n])
+    var title = stringArray[n].replace(/\W/gi,' ').split(' ');
+    // replace every non “word” char with space and split string into an array (split on space)
+    Logger.log('title array alphanumeric only = '+title)
+    var result = '';
+    for(var t in title){
+      if(title[t].replace(/ /g,'')==''){ continue };
+      // skip any empty field
+      result+=title[t].replace(/ /g,'')+'|';
+      // compose a result string with | separators (easier to see in the Logger) and no spaces
+    }
+    title = result.toLowerCase().split('|');
+    // everything in lowercase and convert back to an array splitting on | separators
+    var camelCase = '';// initialize the result string
+    for(t=0 ; t<title.length-1 ; t++){
+      // let's handle each word separately, the first word (index 0) should remain unchanged
+      if(t==0){
+        var capWord = title[t];
+      }else{
+      capWord = title[t].substring(0,1).toUpperCase()+title[t].substr(1);
+      } // every following item gets a capital first letter
+      camelCase+=capWord;// compose output result
+    }
+    // view each result in the Logger and store in an array
+    Logger.log('camelCase = '+camelCase);
+    camelised.push(camelCase);
+  }
+  // return the array of headers in camelCase format
+  return camelised;
+}
+
+function testGetHeadersAsCamelCase(){
+  var data = SpreadsheetApp.getActive().getDataRange().getValues();// we get all the cells with data in one call
+  var headers = data.shift();// the first row is headers row and we remove this row from data altogether
+  var ccHeaders = camelise(headers);
+  for(var n in headers){ // create a loop
+      Logger.log(headers[n]+' becomes >> '+ccHeaders[n]);
+  }
+}
+
+function getObjects(data, keys) {
+  var objects = [];// create an empty array variable
+  for (var i = 0; i < data.length; ++i) {// iterate sheet data
+    var object = {};
+// create an empty “object” variable and then iterate each row's content
+    for (var j = 0; j < data[i].length; ++j) {
+      var cellData = data[i][j];
+// check if cell is empty or contains any white space
+      if (cellData.toString().replace(/ /g,'')=='') {
+        continue;
+      }else{
+        object[keys[j]] = cellData;// assign value to key
+      }
+    }
+    objects.push(object);//store every object in array
+  }
+  return objects;
+}
+
+function exportToDoc(docId,objects,keys,headers){
+  var doc = DocumentApp.openById(docId);
+  var body = doc.getBody();
+  var docHeader = doc.addHeader().appendParagraph('My favourite recipes\rCreated by script on '
+                  +Utilities.formatDate(new Date(), Session.getTimeZone(),'MMM dd @ HH:mm'));
+  // use the style defined outside of the function and use an alignment setting 
+  docHeader.setAttributes(styleHeader).setAlignment(DocumentApp.HorizontalAlignment.CENTER);
+  for(var n in objects){
+    body.appendParagraph('An idea for a meal with '+objects[n][keys[1]]+' composed mainly of '+objects[n][keys[2]]+' for '+objects[n][keys[5]]+' :').setAttributes(styleBase);
+    body.appendParagraph('The name of this recipe is "'+objects[n][keys[0]]+'" but I invented it myself \rso you can change it if you want').setAttributes(styleBase);
+    body.appendHorizontalRule();
+    body.appendParagraph('List of '+headers[3]+' :');
+    var table = [];
+    var ing = objects[n][keys[3]].split(',');
+    for(var i in ing){ table.push(['You must have '+ ing[i]]) };
+    body.appendTable(table).setAttributes(styleTable);
+    body.appendParagraph('Try to get some free time, it will take approximately '+objects[n][keys[4]]+', then clean up your kitchen and '+objects[n][keys[6]]).setAttributes(styleDirections);
+    body.appendHorizontalRule();
+    var image = DriveApp.getFileById(objects[n][keys[7]].split('d/')[1].split('/')[0]).getBlob();// retrieve ID from url
+    // https://drive.google.com/file/d/0B3qSFd3iikE3UmpjelRQdlZmQXc/edit?usp=sharing This is a typical link
+    body.appendParagraph('good apetite ;) ').appendInlineImage(image).setWidth(300).setHeight(200).getParent().setAttributes(styleImage);
+    body.appendHorizontalRule();
+    if(n<objects.length){body.appendPageBreak()};
+  }
+}
+
+// Style definitions as global variables
+  var bodyStyle = {};// define a style for body, margin etc...
+  bodyStyle[DocumentApp.Attribute.MARGIN_LEFT] = 30;
+  bodyStyle[DocumentApp.Attribute.MARGIN_BOTTOM] = 20;
+  bodyStyle[DocumentApp.Attribute.MARGIN_RIGHT] = 30;
+  bodyStyle[DocumentApp.Attribute.MARGIN_TOP] = 20;
+  body.setAttributes(bodyStyle);
+  var styleBase = {};// a "base" style for paragraphs
+  styleBase[DocumentApp.Attribute.FONT_SIZE] = 11;
+  styleBase[DocumentApp.Attribute.FONT_FAMILY] = DocumentApp.FontFamily.AMARANTH;
+  styleBase[DocumentApp.Attribute.FOREGROUND_COLOR] = "#444400";
+  var styleHeader = {};// define a style for document header
+  styleHeader[DocumentApp.Attribute.BACKGROUND_COLOR] = '#eeeeff'
+  styleHeader[DocumentApp.Attribute.FONT_SIZE] = 16; 
+  styleHeader[DocumentApp.Attribute.FONT_FAMILY] = DocumentApp.FontFamily.CORSIVA; 
+  styleHeader[DocumentApp.Attribute.FOREGROUND_COLOR] = '#0000aa';
+  var styleTable = {};// define a tyle for table
+  styleTable[DocumentApp.Attribute.FONT_SIZE] = 10;
+  styleTable[DocumentApp.Attribute.FONT_FAMILY] =DocumentApp.FontFamily.AMARANTH;
+  styleTable[DocumentApp.Attribute.FOREGROUND_COLOR] = "#005500";
+  styleTable[DocumentApp.Attribute.BORDER_WIDTH] = 0 ;
+  var styleDirections = {};// define a style for direction paragraph
+  styleDirections[DocumentApp.Attribute.FONT_SIZE] = 12;
+  styleDirections[DocumentApp.Attribute.FONT_FAMILY] = DocumentApp.FontFamily.CONSOLAS;
+  styleDirections[DocumentApp.Attribute.ITALIC] = true;
+  styleDirections[DocumentApp.Attribute.FOREGROUND_COLOR] = "#000066";
+  var styleImage = {};
+  styleImage[DocumentApp.Attribute.HORIZONTAL_ALIGNMENT] = DocumentApp.HorizontalAlignment.CENTER;
+// end of file
+
+function generateDoc(){
+  var data = SpreadsheetApp.getActive().getDataRange().getValues();
+  // we first get all the cells with data in one call
+  var headers = data.shift();
+  // shift is an array function the removes the first row
+  // and assign it to the variable headers
+  var keys = getHeadersAsCamelCase(headers); 
+  // get the camelCase formatted headers using a separate function
+  var objects = getObjects(data, keys);
+  for(var n in objects){
+    for(var k in keys){
+      Logger.log('Object '+n+' properties '+keys[k]+' = '+objects[n][keys[k]]);
+    }
+  }
+  // we get all the values using 2 loops
+  var docId = DocumentApp.create('Recipes in a doc').getId();
+  //create a doc as a container for our recipes
+  Logger.log(docId);
+  exportToDoc(docId,objects,keys,headers);
+}
+
+function findMarkAndReplace() {
+  var Doc = DocumentApp.getActiveDocument();
+  var image = DocsList.getFileById('0B3qSFd3iikE3UmpjelRQdlZmQXc');
+  // this is an image from the recipe’s example stored on my drive and shared publicly  
+  var totalElements = Doc.getNumChildren();
+  var el=[];
+  for( var j = 0; j < totalElements; ++j ) {
+    var element = Doc.getChild(j);
+    var type = element.getType();
+    Logger.log('element '+j+" : "+type);
+    // to see doc's content type
+    if (type =='PARAGRAPH'){
+      el[j]=element.getText();
+      if(el[j]=='###'){
+        element.removeFromParent();
+        // remove the ### placeholder
+        Doc.insertImage(j, image);
+        // 'image' is the image file as blob
+      }
+    }
+  }
+}
+
+function importFromCal(){
+  var cal = CalendarApp.getDefaultCalendar();
+  var endDate = new Date();
+  var startDate = new Date(endDate.getTime()-30*24*3600000);
+  // start date is 30 days before end date
+  var events = cal.getEvents(startDate, endDate);
+  var doc = DocumentApp.getActiveDocument();
+  var body = doc.getBody();
+  var styleEvent = {};
+  //define a style object to play with
+  for(var n=0 ; n<events.length; n++){
+    if( n % 2 == 0){ 
+  // every odd row will be right aligned, every even row will be left aligned
+      styleEvent[DocumentApp.Attribute.HORIZONTAL_ALIGNMENT] = DocumentApp.HorizontalAlignment.LEFT;
+    }else{
+      styleEvent[DocumentApp.Attribute.HORIZONTAL_ALIGNMENT] = DocumentApp.HorizontalAlignment.RIGHT;
+    }
+    var bgColor = parseInt(0xff*(n+1)/events.length);
+    // fade color to white using hex values
+    Logger.log('color = #'+bgColor.toString(16)+'ffff');
+    styleEvent[DocumentApp.Attribute.FOREGROUND_COLOR] = '#222222';
+    styleEvent[DocumentApp.Attribute.BACKGROUND_COLOR] = '#'+bgColor.toString(16)+'ffff';
+    body.appendParagraph(events[n].getTitle()+'\r'+events[n].getDescription()+'\ron '+Utilities.formatDate(events[n].getStartTime(), Session.getTimeZone(),'MMM dd, yyyy')+'\r@'+events[n].getLocation()).setAttributes(styleEvent);
+  }
+}
